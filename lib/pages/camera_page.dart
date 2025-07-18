@@ -1,184 +1,168 @@
-import 'dart:io';
-import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
-import 'package:image/image.dart' as img;
+import 'package:camera/camera.dart';
+import 'package:provider/provider.dart';
+import '../view_model/camera_view_model.dart';
 
-class CameraPage extends StatefulWidget {
+class CameraPage extends StatelessWidget {
   const CameraPage({super.key});
 
   @override
-  State<CameraPage> createState() => _CameraPageState();
+  Widget build(BuildContext context) {
+    return ChangeNotifierProvider(
+      create: (_) => CameraViewModel()..initCamera(),
+      child: _CameraPageView(),
+    );
+  }
 }
 
-class _CameraPageState extends State<CameraPage> {
-  CameraController? _controller;
-  List<CameraDescription>? cameras;
-  bool _isReady = false;
-  double? _brightness;
-  double? _lux;
-
-  // 相机内参
-  final TextEditingController _focalLenController = TextEditingController(
-    text: '4.0',
-  ); // mm
-  final TextEditingController _apertureController = TextEditingController(
-    text: '2.0',
-  ); // f-number
-  final TextEditingController _exposureController = TextEditingController(
-    text: '0.01',
-  ); // s
-  final TextEditingController _kController = TextEditingController(
-    text: '1.0',
-  ); // 校准系数
-
+class _CameraPageView extends StatelessWidget {
   @override
-  void initState() {
-    super.initState();
-    _initCamera();
+  Widget build(BuildContext context) {
+    final vm = context.watch<CameraViewModel>();
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('相机亮度测量')),
+      body: _buildBody(context, vm),
+    );
   }
 
-  Future<void> _initCamera() async {
-    cameras = await availableCameras();
-    _controller = CameraController(cameras![0], ResolutionPreset.medium);
-    await _controller!.initialize();
-    setState(() => _isReady = true);
+  Widget _buildBody(BuildContext context, CameraViewModel vm) {
+    if (!vm.isReady) return const Center(child: CircularProgressIndicator());
+
+    return SingleChildScrollView(
+      child: Column(
+        children: [
+          AspectRatio(
+            aspectRatio: vm.controller!.value.aspectRatio,
+            child: CameraPreview(vm.controller!),
+          ),
+          _buildControlPanel(context, vm),
+        ],
+      ),
+    );
   }
 
-  Future<void> _captureAndAnalyze() async {
-    try {
-      if (!_controller!.value.isInitialized || !_isReady) {
-        throw Exception('相机未初始化完成');
-      }
+  Widget _buildControlPanel(BuildContext context, CameraViewModel vm) {
+    return Padding(
+      padding: const EdgeInsets.all(8.0),
+      child: Column(
+        children: [
+          _buildParameterInputs(context, vm),
+          const SizedBox(height: 8),
+          ElevatedButton(
+            onPressed: () => vm.captureAndAnalyze(context),
+            child: const Text('拍照并分析亮度'),
+          ),
+          if (vm.brightness != null)
+            Text('平均像素亮度: ${vm.brightness!.toStringAsFixed(2)}'),
+          if (vm.lux != null) Text('估算勒克斯: ${vm.lux!.toStringAsFixed(2)} lx'),
+        ],
+      ),
+    );
+  }
 
-      // 添加相机准备状态检查
-      if (_controller!.value.isTakingPicture) return;
-      await _controller!.lockCaptureOrientation(); // Windows平台需要锁定方向
+  Widget _buildParameterInputs(BuildContext context, CameraViewModel vm) {
+    return Column(
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: _buildTextField(
+                context,
+                vm.focalLenController,
+                '焦距 f (mm)',
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _buildTextField(
+                context,
+                vm.apertureController,
+                '光圈 f-number',
+              ),
+            ),
+          ],
+        ),
+        Row(
+          children: [
+            Expanded(
+              child: _buildTextField(
+                context,
+                vm.exposureController,
+                '曝光时间 t (秒)',
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(child: _buildTextField(context, vm.kController, '校准系数 K')),
+          ],
+        ),
+      ],
+    );
+  }
 
-      final file = await _controller!.takePicture().timeout(
-        const Duration(seconds: 5),
-        onTimeout: () => throw Exception('拍照超时'),
+  Widget _buildTextField(
+    BuildContext context,
+    TextEditingController controller,
+    String label,
+  ) {
+    return TextField(
+      controller: controller,
+      decoration: InputDecoration(
+        labelText: label,
+        suffixIcon: _getSuffixIcon(controller, context),
+      ),
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      onChanged: (value) => _handleInputChange(controller, value, context),
+    );
+  }
+
+  Widget? _getSuffixIcon(TextEditingController c, BuildContext context) {
+    final vm = context.read<CameraViewModel>();
+    if (c == vm.exposureController) {
+      return IconButton(
+        icon: const Icon(Icons.timer, size: 20),
+        onPressed: () => _showExposureDialog(context),
       );
+    }
+    return const Tooltip(
+      message: '自动获取参数',
+      child: Icon(Icons.auto_awesome, size: 16),
+    );
+  }
 
-      // 添加文件存在性检查
-      if (!File(file.path).existsSync()) {
-        throw Exception('照片文件未生成');
+  void _handleInputChange(
+    TextEditingController c,
+    String value,
+    BuildContext context,
+  ) {
+    if (c == context.read<CameraViewModel>().exposureController) {
+      final val = double.tryParse(value);
+      if (val != null && val > 0) {
+        context.read<CameraViewModel>().setExposureTime(val);
       }
-
-      final bytes = await File(file.path).readAsBytes();
-      final image = img.decodeImage(bytes);
-
-      if (image != null) {
-        double sum = 0;
-        for (var p in image) {
-          sum += img.getLuminanceRgb(p.r, p.g, p.b);
-        }
-        double avg = sum / (image.width * image.height);
-        setState(() => _brightness = avg);
-        _calculateLux(avg);
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('拍照失败: ${e.toString()}')));
     }
   }
 
-  void _calculateLux(double avgBrightness) {
-    double f = double.tryParse(_focalLenController.text) ?? 4.0;
-    double a = double.tryParse(_apertureController.text) ?? 2.0;
-    double t = double.tryParse(_exposureController.text) ?? 0.01;
-    double k = double.tryParse(_kController.text) ?? 1.0;
-    double lux = k * avgBrightness * (f * f) / (a * t);
-    setState(() => _lux = lux);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (!_isReady) return Center(child: CircularProgressIndicator());
-    return Scaffold(
-      appBar: AppBar(title: Text('相机亮度测量')),
-      body: SingleChildScrollView(
-        child: Column(
+  void _showExposureDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('曝光时间设置'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            AspectRatio(
-              aspectRatio: _controller!.value.aspectRatio,
-              child: CameraPreview(_controller!),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _focalLenController,
-                          decoration: InputDecoration(labelText: '焦距 f (mm)'),
-                          keyboardType: TextInputType.numberWithOptions(
-                            decimal: true,
-                          ),
-                        ),
-                      ),
-                      SizedBox(width: 8),
-                      Expanded(
-                        child: TextField(
-                          controller: _apertureController,
-                          decoration: InputDecoration(labelText: '光圈 f-number'),
-                          keyboardType: TextInputType.numberWithOptions(
-                            decimal: true,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _exposureController,
-                          decoration: InputDecoration(labelText: '曝光时间 t (秒)'),
-                          keyboardType: TextInputType.numberWithOptions(
-                            decimal: true,
-                          ),
-                        ),
-                      ),
-                      SizedBox(width: 8),
-                      Expanded(
-                        child: TextField(
-                          controller: _kController,
-                          decoration: InputDecoration(labelText: '校准系数 K'),
-                          keyboardType: TextInputType.numberWithOptions(
-                            decimal: true,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: 8),
-                  ElevatedButton(
-                    onPressed: _captureAndAnalyze,
-                    child: Text('拍照并分析亮度'),
-                  ),
-                  if (_brightness != null)
-                    Text('平均像素亮度: ${_brightness!.toStringAsFixed(2)}'),
-                  if (_lux != null)
-                    Text('估算勒克斯: ${_lux!.toStringAsFixed(2)} lx'),
-                ],
-              ),
+            const Text('推荐范围：0.001s - 1.0s\n实际支持范围取决于设备'),
+            const SizedBox(height: 10),
+            ElevatedButton(
+              onPressed: () {
+                context.read<CameraViewModel>().setExposureTime(0.01);
+                Navigator.pop(ctx);
+              },
+              child: const Text('重置默认值 (0.01s)'),
             ),
           ],
         ),
       ),
     );
-  }
-
-  @override
-  void dispose() {
-    _controller?.dispose();
-    _focalLenController.dispose();
-    _apertureController.dispose();
-    _exposureController.dispose();
-    _kController.dispose();
-    super.dispose();
   }
 }
