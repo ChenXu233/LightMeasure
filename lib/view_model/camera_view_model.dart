@@ -21,6 +21,7 @@ class CameraViewModel extends ChangeNotifier {
   double? _focalLength;
   double? _aperture;
   double? _exposureTime;
+  // ignore: non_constant_identifier_names
   double? _ISO; // ISO参数字段
 
   // Getter for focal length
@@ -30,6 +31,7 @@ class CameraViewModel extends ChangeNotifier {
   // Getter for exposure time
   double? get exposureTime => _exposureTime;
   // Getter for ISO
+  // ignore: non_constant_identifier_names
   double? get ISO => _ISO;
 
   // 新增getter
@@ -84,6 +86,7 @@ class CameraViewModel extends ChangeNotifier {
       }
     } catch (e) {
       ScaffoldMessenger.of(
+        // ignore: use_build_context_synchronously
         context,
       ).showSnackBar(SnackBar(content: Text('上传失败: ${e.toString()}')));
     }
@@ -161,6 +164,7 @@ class CameraViewModel extends ChangeNotifier {
       }
     } catch (e) {
       ScaffoldMessenger.of(
+        // ignore: use_build_context_synchronously
         context,
       ).showSnackBar(SnackBar(content: Text('操作失败: ${e.toString()}')));
     }
