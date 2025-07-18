@@ -21,6 +21,7 @@ class CameraViewModel extends ChangeNotifier {
   double? _focalLength;
   double? _aperture;
   double? _exposureTime;
+  double? _ISO; // ISO参数字段
 
   // Getter for focal length
   double? get focalLength => _focalLength;
@@ -28,6 +29,8 @@ class CameraViewModel extends ChangeNotifier {
   double? get aperture => _aperture;
   // Getter for exposure time
   double? get exposureTime => _exposureTime;
+  // Getter for ISO
+  double? get ISO => _ISO;
 
   // 新增getter
   File? get file1 => _file1;
@@ -119,6 +122,7 @@ class CameraViewModel extends ChangeNotifier {
         _focalLength = _parseExifDouble(exifData['EXIF FocalLength']);
         _aperture = _parseExifDouble(exifData['EXIF FNumber']);
         _exposureTime = _parseExifDouble(exifData['EXIF ExposureTime']);
+        _ISO = _parseExifDouble(exifData['EXIF ISOSpeedRatings']);
 
         // 计算平均亮度
         double sum = 0;
@@ -127,13 +131,30 @@ class CameraViewModel extends ChangeNotifier {
         }
         final avgBrightness = sum / (image.width * image.height);
 
+        // 曝光三要素归一化亮度（标准条件：ISO=100, f/1.0, t=1s）
+        double? normalizedBrightness;
+        if (_exposureTime != null &&
+            _aperture != null &&
+            _ISO != null &&
+            _aperture! > 0 &&
+            _exposureTime! > 0 &&
+            _ISO! > 0) {
+          normalizedBrightness =
+              avgBrightness *
+              (100 / _ISO!) *
+              (_aperture! * _aperture!) /
+              (_exposureTime!);
+        } else {
+          normalizedBrightness = avgBrightness;
+        }
+
         // 根据当前拍摄状态存储数据
         if (_isFirstCapture) {
           _file1 = currentFile;
-          _brightness1 = avgBrightness;
+          _brightness1 = normalizedBrightness;
         } else {
           _file2 = currentFile;
-          _brightness2 = avgBrightness;
+          _brightness2 = normalizedBrightness;
         }
         _isFirstCapture = !_isFirstCapture; // 切换拍摄状态
         notifyListeners();
