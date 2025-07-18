@@ -40,30 +40,34 @@ class _CameraPageView extends StatelessWidget {
                 ? CameraPreview(vm.controller!)
                 : const SizedBox(),
           ),
-          // 第一张照片预览（拍摄后显示）
-          if (vm.file1 != null)
-            Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: Column(
-                children: [
-                  const Text('第一张照片'),
-                  Image.file(vm.file1!, height: 150),
-                  Text('亮度: ${vm.brightness1?.toStringAsFixed(2)}'),
-                ],
-              ),
+          // 第一张照片区域（未拍摄时显示全黑占位）
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: Column(
+              children: [
+                const Text('第一张照片'),
+                // 未拍摄时显示黑色容器
+                vm.file1 != null
+                    ? Image.file(vm.file1!, height: 150)
+                    : Container(color: Colors.black, height: 150),
+                Text('亮度: ${vm.brightness1?.toStringAsFixed(2) ?? '未获取'}'),
+              ],
             ),
-          // 第二张照片预览（拍摄后显示）
-          if (vm.file2 != null)
-            Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: Column(
-                children: [
-                  const Text('第二张照片'),
-                  Image.file(vm.file2!, height: 150),
-                  Text('亮度: ${vm.brightness2?.toStringAsFixed(2)}'),
-                ],
-              ),
+          ),
+          // 第二张照片区域（未拍摄时显示全黑占位）
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: Column(
+              children: [
+                const Text('第二张照片'),
+                // 未拍摄时显示黑色容器
+                vm.file2 != null
+                    ? Image.file(vm.file2!, height: 150)
+                    : Container(color: Colors.black, height: 150),
+                Text('亮度: ${vm.brightness2?.toStringAsFixed(2) ?? '未获取'}'),
+              ],
             ),
+          ),
           _buildControlPanel(context, vm),
         ],
       ),
@@ -75,10 +79,25 @@ class _CameraPageView extends StatelessWidget {
       padding: const EdgeInsets.all(8.0),
       child: Column(
         children: [
+          // 拍摄按钮
           ElevatedButton(
-            // 按钮文本根据当前拍摄状态变化
             onPressed: () => vm.captureAndAnalyze(context),
             child: Text(vm.isFirstCapture ? '拍摄第一张' : '拍摄第二张'),
+          ),
+          const SizedBox(height: 8),
+          // 上传按钮组
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              ElevatedButton(
+                onPressed: () => vm.uploadImage(context, true),
+                child: const Text('上传第一张'),
+              ),
+              ElevatedButton(
+                onPressed: () => vm.uploadImage(context, false),
+                child: const Text('上传第二张'),
+              ),
+            ],
           ),
         ],
       ),
