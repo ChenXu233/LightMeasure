@@ -12,9 +12,17 @@ class CameraViewModel extends ChangeNotifier {
   double? _brightness2; // 第二张图亮度
   bool _isFirstCapture = true; // 标记是否是第一次拍摄
 
-  bool get isReady => _isReady;
+  File? _file1; // 第一张照片文件
+  File? _file2; // 第二张照片文件
+
+  // 新增getter
+  File? get file1 => _file1;
+  File? get file2 => _file2;
   double? get brightness1 => _brightness1;
   double? get brightness2 => _brightness2;
+  bool get isFirstCapture => _isFirstCapture;
+
+  bool get isReady => _isReady;
   double? get relativeBrightness => // 相对亮度百分比
   (_brightness1 != null && _brightness2 != null)
       ? (_brightness2! / _brightness1!) * 100
@@ -42,7 +50,8 @@ class CameraViewModel extends ChangeNotifier {
 
       final bytes = await File(file.path).readAsBytes();
       final image = img.decodeImage(bytes);
-      final exifData = await readExifFromBytes(bytes); // 读取EXIF数据
+
+      final currentFile = File(file.path);
 
       if (image != null) {
         // 计算平均亮度
@@ -52,19 +61,15 @@ class CameraViewModel extends ChangeNotifier {
         }
         final avgBrightness = sum / (image.width * image.height);
 
-        // 存储亮度值（根据拍摄顺序）
+        // 根据当前拍摄状态存储数据
         if (_isFirstCapture) {
+          _file1 = currentFile;
           _brightness1 = avgBrightness;
         } else {
+          _file2 = currentFile;
           _brightness2 = avgBrightness;
         }
         _isFirstCapture = !_isFirstCapture; // 切换拍摄状态
-
-        // 打印调试获取的EXIF参数（可选）
-        print('EXIF焦距: ${exifData['EXIF FocalLength']}');
-        print('EXIF光圈: ${exifData['EXIF FNumber']}');
-        print('EXIF曝光时间: ${exifData['EXIF ExposureTime']}');
-
         notifyListeners();
       }
     } catch (e) {

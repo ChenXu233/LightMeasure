@@ -31,10 +31,39 @@ class _CameraPageView extends StatelessWidget {
     return SingleChildScrollView(
       child: Column(
         children: [
+          // 实时相机预览
           AspectRatio(
-            aspectRatio: vm.controller!.value.aspectRatio,
-            child: CameraPreview(vm.controller!),
+            aspectRatio: vm.controller != null
+                ? vm.controller!.value.aspectRatio
+                : 1.0,
+            child: vm.controller != null
+                ? CameraPreview(vm.controller!)
+                : const SizedBox(),
           ),
+          // 第一张照片预览（拍摄后显示）
+          if (vm.file1 != null)
+            Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Column(
+                children: [
+                  const Text('第一张照片'),
+                  Image.file(vm.file1!, height: 150),
+                  Text('亮度: ${vm.brightness1?.toStringAsFixed(2)}'),
+                ],
+              ),
+            ),
+          // 第二张照片预览（拍摄后显示）
+          if (vm.file2 != null)
+            Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Column(
+                children: [
+                  const Text('第二张照片'),
+                  Image.file(vm.file2!, height: 150),
+                  Text('亮度: ${vm.brightness2?.toStringAsFixed(2)}'),
+                ],
+              ),
+            ),
           _buildControlPanel(context, vm),
         ],
       ),
@@ -47,15 +76,10 @@ class _CameraPageView extends StatelessWidget {
       child: Column(
         children: [
           ElevatedButton(
+            // 按钮文本根据当前拍摄状态变化
             onPressed: () => vm.captureAndAnalyze(context),
-            child: Text(vm.brightness1 == null ? '拍摄第一张' : '拍摄第二张'),
+            child: Text(vm.isFirstCapture ? '拍摄第一张' : '拍摄第二张'),
           ),
-          if (vm.brightness1 != null)
-            Text('第一张亮度: ${vm.brightness1!.toStringAsFixed(2)}'),
-          if (vm.brightness2 != null)
-            Text('第二张亮度: ${vm.brightness2!.toStringAsFixed(2)}'),
-          if (vm.relativeBrightness != null)
-            Text('相对亮度: ${vm.relativeBrightness!.toStringAsFixed(1)}%'),
         ],
       ),
     );
