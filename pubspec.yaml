@@ -35,9 +35,10 @@ dependencies:
   image: ^4.1.7
   camera_windows: ^0.2.6
   provider: ^6.1.5
+  exif: ^3.0.0 # 新增EXIF解析库
+  cupertino_icons: ^1.0.8
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
-  cupertino_icons: ^1.0.8
 
 dev_dependencies:
   flutter_test:

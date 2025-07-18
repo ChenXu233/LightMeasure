@@ -2,78 +2,31 @@ import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:image/image.dart' as img;
+import 'package:exif/exif.dart'; // 新增EXIF导入
 
 class CameraViewModel extends ChangeNotifier {
   CameraController? _controller;
   List<CameraDescription>? cameras;
   bool _isReady = false;
-  double? _brightness;
-  double? _lux;
-
-  // 相机参数
-  final TextEditingController focalLenController = TextEditingController(
-    text: '4.0',
-  );
-  final TextEditingController apertureController = TextEditingController(
-    text: '2.0',
-  );
-  final TextEditingController exposureController = TextEditingController(
-    text: '0.01',
-  );
-  final TextEditingController kController = TextEditingController(text: '1.0');
+  double? _brightness1; // 第一张图亮度
+  double? _brightness2; // 第二张图亮度
+  bool _isFirstCapture = true; // 标记是否是第一次拍摄
 
   bool get isReady => _isReady;
-  double? get brightness => _brightness;
-  double? get lux => _lux;
+  double? get brightness1 => _brightness1;
+  double? get brightness2 => _brightness2;
+  double? get relativeBrightness => // 相对亮度百分比
+  (_brightness1 != null && _brightness2 != null)
+      ? (_brightness2! / _brightness1!) * 100
+      : null;
   CameraController? get controller => _controller;
 
   Future<void> initCamera() async {
     cameras = await availableCameras();
     _controller = CameraController(cameras![0], ResolutionPreset.medium);
     await _controller!.initialize();
-
-    // 初始化相机参数
-    final camera = cameras![0];
-    focalLenController.text = _getFocalLength(camera).toStringAsFixed(1);
-    apertureController.text = _getAperture(camera).toStringAsFixed(1);
-
-    // 设置初始曝光参数
-    await _configureExposure();
-
     _isReady = true;
     notifyListeners();
-  }
-
-  Future<void> _configureExposure() async {
-    try {
-      await _controller!.setExposureMode(ExposureMode.auto);
-      await _controller!.setExposurePoint(Offset.zero);
-      exposureController.text = '0.01'; // 默认值
-    } catch (e) {
-      exposureController.text = '0.01'; // 回退默认值
-    }
-  }
-
-  // 新增曝光时间设置方法
-  Future<void> setExposureTime(double seconds) async {
-    try {
-      await _controller!.setExposureOffset(seconds);
-      exposureController.text = seconds.toStringAsFixed(3);
-      notifyListeners();
-    } catch (e) {
-      throw Exception('曝光设置失败: ${e.toString()}');
-    }
-  }
-
-  // 添加获取相机参数的私有方法
-  double _getFocalLength(CameraDescription camera) {
-    // 实际设备可能返回不同值，这里使用典型手机摄像头参数
-    return camera.sensorOrientation == 90 ? 4.0 : 5.2; // 根据传感器方向返回不同值
-  }
-
-  double _getAperture(CameraDescription camera) {
-    // 大多数手机摄像头光圈在f/1.7到f/2.2之间
-    return camera.lensDirection == CameraLensDirection.back ? 1.8 : 2.0;
   }
 
   Future<void> captureAndAnalyze(BuildContext context) async {
@@ -87,44 +40,43 @@ class CameraViewModel extends ChangeNotifier {
         onTimeout: () => throw Exception('拍照超时'),
       );
 
-      if (!File(file.path).existsSync()) {
-        throw Exception('照片文件未生成');
-      }
-
       final bytes = await File(file.path).readAsBytes();
       final image = img.decodeImage(bytes);
+      final exifData = await readExifFromBytes(bytes); // 读取EXIF数据
 
       if (image != null) {
+        // 计算平均亮度
         double sum = 0;
         for (var p in image) {
           sum += img.getLuminanceRgb(p.r, p.g, p.b);
         }
-        _brightness = sum / (image.width * image.height);
-        _calculateLux(_brightness!);
+        final avgBrightness = sum / (image.width * image.height);
+
+        // 存储亮度值（根据拍摄顺序）
+        if (_isFirstCapture) {
+          _brightness1 = avgBrightness;
+        } else {
+          _brightness2 = avgBrightness;
+        }
+        _isFirstCapture = !_isFirstCapture; // 切换拍摄状态
+
+        // 打印调试获取的EXIF参数（可选）
+        print('EXIF焦距: ${exifData['EXIF FocalLength']}');
+        print('EXIF光圈: ${exifData['EXIF FNumber']}');
+        print('EXIF曝光时间: ${exifData['EXIF ExposureTime']}');
+
         notifyListeners();
       }
     } catch (e) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('拍照失败: ${e.toString()}')));
+      ).showSnackBar(SnackBar(content: Text('操作失败: ${e.toString()}')));
     }
-  }
-
-  void _calculateLux(double avgBrightness) {
-    double f = double.tryParse(focalLenController.text) ?? 4.0;
-    double a = double.tryParse(apertureController.text) ?? 2.0;
-    double t = double.tryParse(exposureController.text) ?? 0.01;
-    double k = double.tryParse(kController.text) ?? 1.0;
-    _lux = k * avgBrightness * (f * f) / (a * t);
   }
 
   @override
   void dispose() {
     _controller?.dispose();
-    focalLenController.dispose();
-    apertureController.dispose();
-    exposureController.dispose();
-    kController.dispose();
-    super.dispose(); // 添加父类方法调用
+    super.dispose();
   }
 }
